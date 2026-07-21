@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Music Note Quiz</title>
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f7f7fb;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 10px 0;
+}
+
+select {
+  margin: 10px;
+  padding: 8px;
+  font-size: 1rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background: white;
+}
+
+.staff-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+  padding: 20px 28px;
+  margin: 16px 0;
+}
+
+.choices {
+  width: 100%;
+  max-width: 360px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+button {
+  padding: 18px;
+  font-size: 1.6rem;
+  font-weight: bold;
+  border-radius: 12px;
+  border: none;
+  background: white;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+  cursor: pointer;
+  transition: transform 0.1s, background 0.2s;
+}
+
+button:active { transform: scale(0.96); }
+.correct { background: #4CAF50 !important; color: white; }
+.wrong   { background: #f44336 !important; color: white; }
+</style>
+</head>
+<body>
+
+<h1>Music Note Quiz</h1>
+
+<select id="range" onchange="newQuestion()">
+  <option value="basic">Basic — C4 to F5</option>
+  <option value="extended">Extended — 5 ledger lines</option>
+</select>
+
+<div class="staff-card">
+  <svg id="staff" width="320"></svg>
+</div>
+
+<div class="choices" id="choices"></div>
+
+<script>
+// Fixed coordinate system — changing modes adjusts viewBox, not positions.
+// Staff lines (top → bottom): F5, D5, B4, G4, E4
+const TOP_LINE    = 70;   // y of F5 (top staff line)
+const BOTTOM_LINE = 118;  // y of E4 (bottom staff line)
+const SPACING     = 12;   // px between staff lines
+const STEP        = 6;    // px per note step (half spacing)
+const STAFF_X1    = 10;
+const STAFF_X2    = 310;
+const NOTE_X      = 215;
+const MIDDLE_Y    = 94;   // y of B4 (middle line) — stem direction pivot
+const CLEF_X      = 12;
+const CLEF_Y      = 132;  // baseline of treble clef text
+
+const LINE_Y = [70, 82, 94, 106, 118]; // the 5 staff lines
+
+// All notes from B2 (5 ledger lines below) to B6 (5 ledger lines above).
+// Ledger lines are computed dynamically — see getLedgerLines().
+const ALL_NOTES = [
+  { name:"B6", letter:"B", y: 10 },
+  { name:"A6", letter:"A", y: 16 },
+  { name:"G6", letter:"G", y: 22 },
+  { name:"F6", letter:"F", y: 28 },
+  { name:"E6", letter:"E", y: 34 },
+  { name:"D6", letter:"D", y: 40 },
+  { name:"C6", letter:"C", y: 46 },
+  { name:"B5", letter:"B", y: 52 },
+  { name:"A5", letter:"A", y: 58 },
+  { name:"G5", letter:"G", y: 64 },
+  { name:"F5", letter:"F", y: 70 },
+  { name:"E5", letter:"E", y: 76 },
+  { name:"D5", letter:"D", y: 82 },
+  { name:"C5", letter:"C", y: 88 },
+  { name:"B4", letter:"B", y: 94 },
+  { name:"A4", letter:"A", y:100 },
+  { name:"G4", letter:"G", y:106 },
+  { name:"F4", letter:"F", y:112 },
+  { name:"E4", letter:"E", y:118 },
+  { name:"D4", letter:"D", y:124 },
+  { name:"C4", letter:"C", y:130 },
+  { name:"B3", letter:"B", y:136 },
+  { name:"A3", letter:"A", y:142 },
+  { name:"G3", letter:"G", y:148 },
+  { name:"F3", letter:"F", y:154 },
+  { name:"E3", letter:"E", y:160 },
+  { name:"D3", letter:"D", y:166 },
+  { name:"C3", letter:"C", y:172 },
+  { name:"B2", letter:"B", y:178 },
+];
+
+// Basic: C4 (first ledger below) up to F5 (top line)
+const BASIC_NAMES    = ["C4","D4","E4","F4","G4","A4","B4","C5","D5","E5","F5"];
+const EXTENDED_NAMES = ALL_NOTES.map(n => n.name);
+
+// Returns y-coords of ledger lines needed to display a note at noteY.
+function getLedgerLines(noteY) {
+  const ledgers = [];
+  if (noteY < TOP_LINE) {
+    for (let y = TOP_LINE - SPACING; y >= 10; y -= SPACING) {
+      if (y >= noteY) ledgers.push(y); else break;
+    }
+  } else if (noteY > BOTTOM_LINE) {
+    for (let y = BOTTOM_LINE + SPACING; y <= 178; y += SPACING) {
+      if (y <= noteY) ledgers.push(y); else break;
+    }
+  }
+  return ledgers;
+}
+
+function getPool() {
+  const names = document.getElementById("range").value === "basic"
+    ? BASIC_NAMES : EXTENDED_NAMES;
+  return ALL_NOTES.filter(n => names.includes(n.name));
+}
+
+// Adjust SVG viewBox and height to show the relevant note range with padding.
+function updateSVGLayout() {
+  const svg = document.getElementById("staff");
+  const mode = document.getElementById("range").value;
+  if (mode === "basic") {
+    // Show C4 (y=130) to F5 (y=70) with ~14px padding each side
+    svg.setAttribute("viewBox", "0 56 320 90");
+    svg.setAttribute("height", "115");
+  } else {
+    // Show B6 (y=10) to B2 (y=178) with small padding
+    svg.setAttribute("viewBox", "0 0 320 195");
+    svg.setAttribute("height", "195");
+  }
+}
+
+function el(tag, attrs, text) {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function drawStaff(note) {
+  const svg = document.getElementById("staff");
+  svg.innerHTML = "";
+
+  // Staff lines
+  for (const y of LINE_Y) {
+    svg.appendChild(el("line", {
+      x1: STAFF_X1, y1: y, x2: STAFF_X2, y2: y,
+      stroke: "#333", "stroke-width": "1.5"
+    }));
+  }
+
+  // Treble clef (Unicode 𝄞)
+  svg.appendChild(el("text", {
+    x: CLEF_X, y: CLEF_Y,
+    "font-size": "76",
+    "font-family": "'Times New Roman', Georgia, serif",
+    fill: "#222"
+  }, "\u{1D11E}"));
+
+  // Ledger lines
+  for (const ly of getLedgerLines(note.y)) {
+    svg.appendChild(el("line", {
+      x1: NOTE_X - 13, y1: ly, x2: NOTE_X + 13, y2: ly,
+      stroke: "#333", "stroke-width": "1.5"
+    }));
+  }
+
+  // Note head
+  const ny = note.y;
+  svg.appendChild(el("ellipse", {
+    cx: NOTE_X, cy: ny, rx: 8, ry: 5.5,
+    transform: `rotate(-12 ${NOTE_X} ${ny})`,
+    fill: "#111"
+  }));
+
+  // Stem: down (left side) for B4 and above, up (right side) below B4
+  const stemDown = ny <= MIDDLE_Y;
+  svg.appendChild(el("line", {
+    x1: stemDown ? NOTE_X - 7 : NOTE_X + 7,
+    y1: ny,
+    x2: stemDown ? NOTE_X - 7 : NOTE_X + 7,
+    y2: stemDown ? ny + 34 : ny - 34,
+    stroke: "#111", "stroke-width": "1.5"
+  }));
+}
+
+function shuffle(arr) {
+  return [...arr].sort(() => Math.random() - 0.5);
+}
+
+const ALL_LETTERS = ["A","B","C","D","E","F","G"];
+let current;
+let locked = false;
+
+function newQuestion() {
+  locked = false;
+  updateSVGLayout();
+  const pool = getPool();
+  current = pool[Math.floor(Math.random() * pool.length)];
+  drawStaff(current);
+
+  const others = shuffle(ALL_LETTERS.filter(l => l !== current.letter)).slice(0, 3);
+  const choices = shuffle([current.letter, ...others]);
+
+  const container = document.getElementById("choices");
+  container.innerHTML = "";
+  choices.forEach(letter => {
+    const btn = document.createElement("button");
+    btn.textContent = letter;
+    btn.onclick = () => {
+      if (locked) return;
+      if (letter === current.letter) {
+        btn.classList.add("correct");
+        locked = true;
+        setTimeout(newQuestion, 700);
+      } else {
+        btn.classList.add("wrong");
+      }
+    };
+    container.appendChild(btn);
+  });
+}
+
+// Keyboard shortcuts: A–G keys
+document.addEventListener("keydown", e => {
+  const letter = e.key.toUpperCase();
+  if (!ALL_LETTERS.includes(letter)) return;
+  const btn = [...document.querySelectorAll("#choices button")]
+    .find(b => b.textContent === letter);
+  if (btn) btn.click();
+});
+
+newQuestion();
+</script>
+
+</body>
+</html>

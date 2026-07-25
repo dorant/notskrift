@@ -89,13 +89,16 @@ let audioUnlocked = false;
 function unlockAudio() {
   if (audioUnlocked) return;
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  audioCtx.resume().then(() => { audioUnlocked = true; });
+  audioUnlocked = true;
+  audioCtx.resume();
 }
 
 document.addEventListener("click",      unlockAudio, { once: true });
 document.addEventListener("touchstart", unlockAudio, { once: true });
 
 const NOTE_FREQS = {
+  "D1": 36.71,"E1": 41.20,"F1": 43.65,"G1": 49.00,"A1": 55.00,"B1": 61.74,
+  "C2": 65.41,"D2": 73.42,"E2": 82.41,"F2": 87.31,"G2": 98.00,"A2":110.00,
   "B2":123.47,"C3":130.81,"D3":146.83,"E3":164.81,"F3":174.61,"G3":196.00,
   "A3":220.00,"B3":246.94,"C4":261.63,"D4":293.66,"E4":329.63,"F4":349.23,
   "G4":392.00,"A4":440.00,"B4":493.88,"C5":523.25,"D5":587.33,"E5":659.25,
@@ -152,9 +155,8 @@ const CLEF_Y      = 132;  // baseline of treble clef text
 
 const LINE_Y = [70, 82, 94, 106, 118]; // the 5 staff lines
 
-// All notes from B2 (5 ledger lines below) to B6 (5 ledger lines above).
-// Ledger lines are computed dynamically — see getLedgerLines().
-const ALL_NOTES = [
+// Treble clef notes: B2 (5 ledger lines below) to B6 (5 ledger lines above).
+const TREBLE_NOTES = [
   { name:"B6", letter:"B", y: 10 },
   { name:"A6", letter:"A", y: 16 },
   { name:"G6", letter:"G", y: 22 },
@@ -186,9 +188,43 @@ const ALL_NOTES = [
   { name:"B2", letter:"B", y:178 },
 ];
 
-// Basic: C4 (first ledger below) up to F5 (top line)
-const BASIC_NAMES    = ["C4","D4","E4","F4","G4","A4","B4","C5","D5","E5","F5"];
-const EXTENDED_NAMES = ALL_NOTES.map(n => n.name);
+const TREBLE_BASIC_NAMES    = ["C4","D4","E4","F4","G4","A4","B4","C5","D5","E5","F5"];
+const TREBLE_EXTENDED_NAMES = TREBLE_NOTES.map(n => n.name);
+
+// Bass (F) clef — same y-grid, staff lines (top→bottom): A3, F3, D3, B2, G2
+const BASS_NOTES = [
+  { name:"D5", letter:"D", y: 10 },
+  { name:"C5", letter:"C", y: 16 },
+  { name:"B4", letter:"B", y: 22 },
+  { name:"A4", letter:"A", y: 28 },
+  { name:"G4", letter:"G", y: 34 },
+  { name:"F4", letter:"F", y: 40 },
+  { name:"E4", letter:"E", y: 46 },
+  { name:"D4", letter:"D", y: 52 },
+  { name:"C4", letter:"C", y: 58 },  // middle C — 1st ledger above
+  { name:"B3", letter:"B", y: 64 },
+  { name:"A3", letter:"A", y: 70 },  // top staff line
+  { name:"G3", letter:"G", y: 76 },
+  { name:"F3", letter:"F", y: 82 },  // 2nd staff line (F clef anchor)
+  { name:"E3", letter:"E", y: 88 },
+  { name:"D3", letter:"D", y: 94 },  // middle staff line
+  { name:"C3", letter:"C", y:100 },
+  { name:"B2", letter:"B", y:106 },  // 4th staff line
+  { name:"A2", letter:"A", y:112 },
+  { name:"G2", letter:"G", y:118 },  // bottom staff line
+  { name:"F2", letter:"F", y:124 },
+  { name:"E2", letter:"E", y:130 },
+  { name:"D2", letter:"D", y:136 },
+  { name:"C2", letter:"C", y:142 },
+  { name:"B1", letter:"B", y:148 },
+  { name:"A1", letter:"A", y:154 },
+  { name:"G1", letter:"G", y:160 },
+  { name:"F1", letter:"F", y:166 },
+  { name:"E1", letter:"E", y:172 },
+  { name:"D1", letter:"D", y:178 },
+];
+const BASS_BASIC_NAMES    = ["G2","A2","B2","C3","D3","E3","F3","G3","A3","B3","C4"];
+const BASS_EXTENDED_NAMES = BASS_NOTES.map(n => n.name);
 
 // Returns y-coords of ledger lines needed to display a note at noteY.
 function getLedgerLines(noteY) {
@@ -205,22 +241,24 @@ function getLedgerLines(noteY) {
   return ledgers;
 }
 
-function getPool() {
-  const names = document.getElementById("range").value === "basic"
-    ? BASIC_NAMES : EXTENDED_NAMES;
-  return ALL_NOTES.filter(n => names.includes(n.name));
+function getPool(clef) {
+  const basic = document.getElementById("range").value === "basic";
+  if (clef === "bass") {
+    const names = basic ? BASS_BASIC_NAMES : BASS_EXTENDED_NAMES;
+    return BASS_NOTES.filter(n => names.includes(n.name));
+  }
+  const names = basic ? TREBLE_BASIC_NAMES : TREBLE_EXTENDED_NAMES;
+  return TREBLE_NOTES.filter(n => names.includes(n.name));
 }
 
-// Adjust SVG viewBox and height to show the relevant note range with padding.
 function updateSVGLayout() {
   const svg = document.getElementById("staff");
-  const mode = document.getElementById("range").value;
-  if (mode === "basic") {
-    // Show C4 (y=130) to F5 (y=70) with ~14px padding each side
-    svg.setAttribute("viewBox", "0 56 320 90");
-    svg.setAttribute("height", "115");
+  const basic = document.getElementById("range").value === "basic";
+  if (basic) {
+    // Unified viewBox covering both clefs: bass C4(y=58) to treble C4(y=130), ~14px padding
+    svg.setAttribute("viewBox", "0 44 320 100");
+    svg.setAttribute("height", "128");
   } else {
-    // Show B6 (y=10) to B2 (y=178) with small padding
     svg.setAttribute("viewBox", "0 0 320 195");
     svg.setAttribute("height", "195");
   }
@@ -233,7 +271,7 @@ function el(tag, attrs, text) {
   return e;
 }
 
-function drawStaff(note) {
+function drawStaff(note, clef) {
   const svg = document.getElementById("staff");
   svg.innerHTML = "";
 
@@ -245,13 +283,22 @@ function drawStaff(note) {
     }));
   }
 
-  // Treble clef (Unicode 𝄞)
-  svg.appendChild(el("text", {
-    x: CLEF_X, y: CLEF_Y,
-    "font-size": "76",
-    "font-family": "'Times New Roman', Georgia, serif",
-    fill: "#222"
-  }, "\u{1D11E}"));
+  // Clef symbol
+  if (clef === "bass") {
+    svg.appendChild(el("text", {
+      x: CLEF_X, y: 106,
+      "font-size": "52",
+      "font-family": "'Times New Roman', Georgia, serif",
+      fill: "#222"
+    }, "\u{1D122}"));
+  } else {
+    svg.appendChild(el("text", {
+      x: CLEF_X, y: CLEF_Y,
+      "font-size": "100",
+      "font-family": "'Times New Roman', Georgia, serif",
+      fill: "#222"
+    }, "\u{1D11E}"));
+  }
 
   // Ledger lines
   for (const ly of getLedgerLines(note.y)) {
@@ -286,14 +333,24 @@ function shuffle(arr) {
 
 const ALL_LETTERS = ["A","B","C","D","E","F","G"];
 let current;
+let currentClef;
 let locked = false;
+
+// Shuffle bag: draw from pre-shuffled pairs so max streak is 2.
+let clefBag = [];
+function nextClef() {
+  if (clefBag.length === 0)
+    clefBag = Array.from({length: 4}, () => shuffle(["treble","bass"])).flat();
+  return clefBag.pop();
+}
 
 function newQuestion() {
   locked = false;
+  currentClef = nextClef();
   updateSVGLayout();
-  const pool = getPool();
+  const pool = getPool(currentClef);
   current = pool[Math.floor(Math.random() * pool.length)];
-  drawStaff(current);
+  drawStaff(current, currentClef);
   playNote(current.name);
 
   const others = shuffle(ALL_LETTERS.filter(l => l !== current.letter)).slice(0, 3);

@@ -75,6 +75,10 @@ button:active { transform: scale(0.96); }
   <option value="extended">Extended — 5 ledger lines</option>
 </select>
 
+<label style="font-size:0.95rem; user-select:none;">
+  <input type="checkbox" id="soundOn"> Sound
+</label>
+
 <div class="staff-card">
   <svg id="staff" width="320"></svg>
 </div>
@@ -107,7 +111,7 @@ const NOTE_FREQS = {
 };
 
 function playNote(noteName) {
-  if (!noteName) return;
+  if (!noteName || !document.getElementById("soundOn").checked) return;
   try {
     if (!audioCtx || !audioUnlocked) return;
     const freq = NOTE_FREQS[noteName];
@@ -148,10 +152,10 @@ const SPACING     = 12;   // px between staff lines
 const STEP        = 6;    // px per note step (half spacing)
 const STAFF_X1    = 10;
 const STAFF_X2    = 310;
-const NOTE_X      = 215;
+const NOTE_X      = 160;
 const MIDDLE_Y    = 94;   // y of B4 (middle line) — stem direction pivot
 const CLEF_X      = 12;
-const CLEF_Y      = 132;  // baseline of treble clef text
+const CLEF_Y      = 127;  // baseline of treble clef text
 
 const LINE_Y = [70, 82, 94, 106, 118]; // the 5 staff lines
 
